@@ -16,5 +16,8 @@ public class Seat
     public Guid? ReservationId { get; set; }
     public DateTime? HoldExpiresAtUtc { get; set; }
 
+    // Chapter 1 fix: row version used for optimistic concurrency (PostgreSQL xmin).
+    public uint Version { get; set; }
+
     public Event Event { get; set; } = null!;
 }

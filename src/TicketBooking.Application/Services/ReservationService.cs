@@ -18,12 +18,20 @@ public class ReservationService : IReservationService
         _reservationRepository = reservationRepository;
     }
 
-    // INTENTIONALLY BROKEN — Chapter 1: Overselling
+    // Chapter 1: Overselling
+    //
+    // WAS INTENTIONALLY BROKEN (tag ch1-broken):
     // Check-then-act race: the seat is read, checked in memory, then written back.
     // Two concurrent requests can both read "Available" before either one saves,
     // so both pass the check and both get a reservation for the same seat.
-    // Nothing in the database stops this: no lock, no concurrency token,
+    // Nothing in the database stopped this: no lock, no concurrency token,
     // no constraint on active reservations per seat.
+    //
+    // FIXED (tag ch1-fixed) with optimistic concurrency, without changing this method:
+    // - Seat.Version is mapped to PostgreSQL's xmin (SeatConfiguration).
+    // - The UPDATE in step 3 only succeeds if the seat is unchanged since step 1.
+    // - The losing request gets DbUpdateConcurrencyException, which
+    //   ReservationRepository turns into ConflictException (409). Nothing is saved for it.
     public async Task<ReservationDto> ReserveSeatAsync(ReserveSeatRequestDto request)
     {
         var now = DateTime.UtcNow;

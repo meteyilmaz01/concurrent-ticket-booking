@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using TicketBooking.Application.Exceptions;
 using TicketBooking.Application.Interfaces.Repositories;
 using TicketBooking.Domain.Entities;
 using TicketBooking.Infrastructure.Persistence;
@@ -20,6 +22,15 @@ public class ReservationRepository : IReservationRepository
 
     public async Task SaveChangesAsync()
     {
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Chapter 1 fix: another request changed the seat after we read it
+            // (its xmin no longer matches), so we lost the race. Nothing was saved.
+            throw new ConflictException("Seat is not available.");
+        }
     }
 }
