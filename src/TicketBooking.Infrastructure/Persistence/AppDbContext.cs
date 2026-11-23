@@ -3,11 +3,15 @@ using TicketBooking.Domain.Entities;
 
 namespace TicketBooking.Infrastructure.Persistence;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public class AppDbContext : DbContext
 {
-    public DbSet<Event> Events => Set<Event>();
-    public DbSet<Seat> Seats => Set<Seat>();
-    public DbSet<Reservation> Reservations => Set<Reservation>();
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<Event> Events { get; set; }
+    public DbSet<Seat> Seats { get; set; }
+    public DbSet<Reservation> Reservations { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
