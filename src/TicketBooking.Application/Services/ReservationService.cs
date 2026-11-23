@@ -32,6 +32,8 @@ public class ReservationService : IReservationService
     // - The UPDATE in step 3 only succeeds if the seat is unchanged since step 1.
     // - The losing request gets DbUpdateConcurrencyException, which
     //   ReservationRepository turns into ConflictException (409). Nothing is saved for it.
+    //
+    // Full write-up: docs/chapters/01-overselling.md
     public async Task<ReservationDto> ReserveSeatAsync(ReserveSeatRequestDto request)
     {
         var now = DateTime.UtcNow;
