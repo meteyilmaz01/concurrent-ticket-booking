@@ -10,8 +10,8 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      # PostgreSQL 18 imajı veriyi /var/lib/postgresql/18/docker altında tutar;
-      # volume bu yüzden üst dizine bağlanır.
+      # The PostgreSQL 18 image stores data under /var/lib/postgresql/18/docker,
+      # so the volume is mounted on the parent directory.
       - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
