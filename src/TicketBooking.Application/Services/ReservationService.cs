@@ -99,6 +99,12 @@ public class ReservationService : IReservationService
     //   someone else took the seat), the customer is charged without getting the seat.
     //
     // Full write-up: docs/chapters/02-payment-inside-transaction.md
+    //
+    // INTENTIONALLY BROKEN — Chapter 3: Duplicate payment
+    // Check-then-act again, but this time the "act" cannot be undone. A double click or
+    // a client retry sends a second confirm while the first is still waiting for the
+    // provider. Both see "Pending" and both charge. Only one save succeeds, so the
+    // customer pays several times and is told that the other attempts failed.
     public async Task<ReservationDto> ConfirmAsync(Guid reservationId)
     {
         var now = DateTime.UtcNow;
