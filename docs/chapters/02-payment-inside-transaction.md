@@ -103,7 +103,7 @@ Charging money and saving to the database are two separate systems, and no datab
 - **Double charge:** two parallel confirmations of the same reservation both see it as pending and both charge. The row version from [Chapter 1](01-overselling.md) rejects the second save, but the money has already been taken.
 - **Charged without a seat:** if the save fails after a successful charge (for example the hold expired during the payment and someone else took the seat), the customer pays and gets nothing.
 
-The first is the subject of Chapter 3 (idempotency). The second needs a refund or reconciliation process, which is outside the scope of this project.
+The first is the subject of [Chapter 3](03-duplicate-payment.md) (idempotency). The second needs a refund or reconciliation process, which is outside the scope of this project.
 
 ## Try it yourself
 

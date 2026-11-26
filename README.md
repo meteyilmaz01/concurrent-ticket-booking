@@ -17,7 +17,7 @@ Every chapter follows the same steps:
 |---|---|---|---|---|
 | 1 | Overselling: two buyers get the same seat | ✅ Fixed | [Chapter 1](docs/chapters/01-overselling.md) | `ch1-broken` → `ch1-fixed` |
 | 2 | External payment call inside a database transaction | ✅ Fixed | [Chapter 2](docs/chapters/02-payment-inside-transaction.md) | `ch2-broken` → `ch2-fixed` |
-| 3 | Missing idempotency: double clicks and retries charge twice | ⏳ Planned | | |
+| 3 | Duplicate payment: double clicks and retries charge again | ✅ Fixed | [Chapter 3](docs/chapters/03-duplicate-payment.md) | `ch3-broken` → `ch3-fixed` |
 
 ### Chapter 1 at a glance
 
@@ -41,13 +41,24 @@ Fixed with optimistic concurrency (PostgreSQL `xmin`). Details, screenshots and 
 
 Fixed by not holding a database transaction while calling the payment provider. Details are in the [Chapter 2 write-up](docs/chapters/02-payment-inside-transaction.md).
 
+### Chapter 3 at a glance
+
+10 concurrent payment requests for one reservation of 1,500 TRY:
+
+| | Charges | Money taken |
+|---|---|---|
+| Broken (`ch3-broken`) | **10** | 15,000 TRY |
+| Fixed (`ch3-fixed`) | **1** | 1,500 TRY |
+
+Fixed by saving a payment row with a unique constraint before charging. Details are in the [Chapter 3 write-up](docs/chapters/03-duplicate-payment.md).
+
 ## Out of scope
 
 This project is about specific concurrency and performance problems, so these are deliberately left out:
 
 - **Authentication:** `userId` is taken from the request body. A real system must take it from a verified token.
 - **Real payments:** a fake payment gateway stands in for a provider.
-- **Refunds and reconciliation** for charges that could not be saved.
+- **Refunds and reconciliation** for charges whose outcome is unknown or could not be saved.
 - **Production setup:** deployment, secrets management and connection limits are not tuned.
 
 ## Tech stack
@@ -69,7 +80,7 @@ TicketBooking.Api             Controllers, exception handling middleware, Progra
 TicketBooking.Application     Services (business rules), DTOs, exceptions,
         │                     repository and service interfaces
         ▼
-TicketBooking.Domain          Entities (Event, Seat, Reservation) and enums
+TicketBooking.Domain          Entities (Event, Seat, Reservation, Payment) and enums
 
 TicketBooking.Infrastructure  EF Core DbContext, configurations, migrations,
                               repository implementations, payment gateway client
@@ -92,7 +103,8 @@ tests/
 load-tests/
 └── payment-load.js
 scripts/
-└── oversell-demo.cs
+├── oversell-demo.cs
+└── double-charge-demo.cs
 docs/
 ├── chapters/          one write-up per chapter
 └── images/            screenshots used as proof
@@ -150,7 +162,7 @@ Docker must be running: the tests start their own PostgreSQL container and never
 dotnet test --project tests/TicketBooking.IntegrationTests
 ```
 
-### 5. Run the demo script
+### 5. Run the demo scripts
 
 With the API running, in a second terminal:
 
@@ -159,6 +171,14 @@ dotnet run scripts/oversell-demo.cs
 ```
 
 It sends 50 reservation requests for the same seat at the same time and reports how many succeeded.
+
+With the fake payment gateway running as well:
+
+```bash
+dotnet run scripts/double-charge-demo.cs
+```
+
+It pays one reservation 10 times at once and reports how many times the money was taken.
 
 ### 6. Run the load test
 
