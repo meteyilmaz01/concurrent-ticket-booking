@@ -3,6 +3,7 @@
     <Project Path="src/TicketBooking.Api/TicketBooking.Api.csproj" />
     <Project Path="src/TicketBooking.Application/TicketBooking.Application.csproj" />
     <Project Path="src/TicketBooking.Domain/TicketBooking.Domain.csproj" />
+    <Project Path="src/TicketBooking.FakePaymentGateway/TicketBooking.FakePaymentGateway.csproj" />
     <Project Path="src/TicketBooking.Infrastructure/TicketBooking.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">

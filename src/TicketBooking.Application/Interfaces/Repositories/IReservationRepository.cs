@@ -4,6 +4,11 @@ namespace TicketBooking.Application.Interfaces.Repositories;
 
 public interface IReservationRepository
 {
+    Task<Reservation?> GetByIdAsync(Guid id);
     Task AddAsync(Reservation reservation);
     Task SaveChangesAsync();
+
+    Task BeginTransactionAsync();
+    Task CommitAsync();
+    Task RollbackAsync();
 }

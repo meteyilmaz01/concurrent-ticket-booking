@@ -20,5 +20,16 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Load tests (Chapter 2+). Not started by "docker compose up"; run with:
+  #   docker compose run --rm k6 run /scripts/payment-load.js
+  # The API and the fake payment gateway must be running on this machine.
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: ["load-test"]
+    volumes:
+      - ./load-tests:/scripts
+    environment:
+      BASE_URL: http://host.docker.internal:5287
+
 volumes:
   postgres-data:

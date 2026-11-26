@@ -21,4 +21,11 @@ public class ReservationController : ControllerBase
         var result = await _reservationService.ReserveSeatAsync(request);
         return Ok(result);
     }
+
+    [HttpPost("{reservationId}/confirm")]
+    public async Task<IActionResult> Confirm(Guid reservationId)
+    {
+        var result = await _reservationService.ConfirmAsync(reservationId);
+        return Ok(result);
+    }
 }

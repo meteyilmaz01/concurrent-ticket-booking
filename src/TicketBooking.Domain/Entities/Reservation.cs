@@ -18,6 +18,9 @@ public class Reservation
     public DateTime? ConfirmedAtUtc { get; set; }
     public DateTime? CancelledAtUtc { get; set; }
 
+    // Id returned by the payment provider when the reservation was paid.
+    public Guid? PaymentId { get; set; }
+
     public Event Event { get; set; } = null!;
     public Seat Seat { get; set; } = null!;
 }

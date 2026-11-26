@@ -33,6 +33,7 @@ public class ExceptionHandlingMiddleware
         {
             NotFoundException => HttpStatusCode.NotFound,
             ConflictException => HttpStatusCode.Conflict,
+            PaymentFailedException => HttpStatusCode.BadGateway,
             _ => HttpStatusCode.InternalServerError,
         };
 

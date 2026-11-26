@@ -8,4 +8,5 @@ public class ReservationDto
     public long TotalInKurus { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime ExpiresAtUtc { get; set; }
+    public Guid? PaymentId { get; set; }
 }
