@@ -1,5 +1,7 @@
 # Concurrent Ticket Booking
 
+[![CI](https://github.com/meteyilmaz01/concurrent-ticket-booking/actions/workflows/ci.yml/badge.svg)](https://github.com/meteyilmaz01/concurrent-ticket-booking/actions/workflows/ci.yml)
+
 An individual learning project: the backend of a ticket-selling API for concerts and events under heavy demand.
 
 When thousands of people try to buy the same seat at the same moment, code that looks perfectly correct can sell one seat to many people, slow down to a crawl or be flooded with duplicate requests. In this project I write those mistakes **on purpose**, prove each one with a test and real numbers, then fix it and explain why the fix works.

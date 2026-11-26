@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    # Docker is preinstalled, so Testcontainers can start PostgreSQL.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - run: dotnet build TicketBooking.slnx --configuration Release
+
+      - run: dotnet test --project tests/TicketBooking.IntegrationTests --configuration Release --no-build
