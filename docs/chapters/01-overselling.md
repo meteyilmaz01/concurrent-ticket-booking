@@ -229,7 +229,7 @@ The [`AddSeatVersion`](../../src/TicketBooking.Infrastructure/Persistence/Migrat
 
 Optimistic concurrency was chosen because it is the smallest and most readable change, it is EF Core's standard mechanism, and the business code stays exactly as it was. In a ticketing system, a request that loses the race should get `409` anyway, so the "wasted" attempts cost nothing extra.
 
-Because the check happens in the database, not in the application's memory, it also holds when several API instances run at the same time. That matters in [Chapter 2](../../README.md#chapters).
+Because the check happens in the database, not in the application's memory, it also holds when several API instances run at the same time.
 
 ## Try it yourself
 

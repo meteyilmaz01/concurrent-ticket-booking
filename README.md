@@ -7,7 +7,7 @@ When thousands of people try to buy the same seat at the same moment, code that 
 Every chapter follows the same steps:
 
 1. **Broken on purpose:** a realistic implementation that a careful engineer could write and that passes a normal code review. It is committed and tagged `chN-broken`.
-2. **Proof:** a demo script, a database query and an automated test that show the problem with concrete numbers and screenshots.
+2. **Proof:** a test (integration test or load test) that shows the problem with concrete numbers and screenshots.
 3. **Fix:** the smallest change that solves it, tagged `chN-fixed`, with the same proof run again.
 4. **Write-up:** a chapter document explaining the problem, the fix and the alternatives.
 
@@ -16,10 +16,8 @@ Every chapter follows the same steps:
 | # | Problem | Status | Write-up | Tags |
 |---|---|---|---|---|
 | 1 | Overselling: two buyers get the same seat | ✅ Fixed | [Chapter 1](docs/chapters/01-overselling.md) | `ch1-broken` → `ch1-fixed` |
-| 2 | In-process lock that breaks with multiple API instances | ⏳ Planned | | |
-| 3 | External payment call inside a database transaction | ⏳ Planned | | |
-| 4 | Missing idempotency: double clicks and retries | ⏳ Planned | | |
-| 5 | Seat map polling storm | ⏳ Planned | | |
+| 2 | External payment call inside a database transaction | ✅ Fixed | [Chapter 2](docs/chapters/02-payment-inside-transaction.md) | `ch2-broken` → `ch2-fixed` |
+| 3 | Missing idempotency: double clicks and retries charge twice | ⏳ Planned | | |
 
 ### Chapter 1 at a glance
 
@@ -32,14 +30,33 @@ Every chapter follows the same steps:
 
 Fixed with optimistic concurrency (PostgreSQL `xmin`). Details, screenshots and alternatives are in the [Chapter 1 write-up](docs/chapters/01-overselling.md).
 
+### Chapter 2 at a glance
+
+200 users paying at the same time, while others only list events (p95 response times):
+
+| | Event list | Payment |
+|---|---|---|
+| Broken (`ch2-broken`) | 2.08 s | 3.92 s |
+| Fixed (`ch2-fixed`) | **42 ms** | **2.50 s** (the provider alone takes 2 s) |
+
+Fixed by not holding a database transaction while calling the payment provider. Details are in the [Chapter 2 write-up](docs/chapters/02-payment-inside-transaction.md).
+
+## Out of scope
+
+This project is about specific concurrency and performance problems, so these are deliberately left out:
+
+- **Authentication:** `userId` is taken from the request body. A real system must take it from a verified token.
+- **Real payments:** a fake payment gateway stands in for a provider.
+- **Refunds and reconciliation** for charges that could not be saved.
+- **Production setup:** deployment, secrets management and connection limits are not tuned.
+
 ## Tech stack
 
 - .NET 10, ASP.NET Core Web API (controllers)
 - Entity Framework Core 10 with Npgsql, migrations for the schema
 - PostgreSQL 18.7 in Docker
 - xUnit v3, Testcontainers (a throwaway PostgreSQL per test run), `WebApplicationFactory`
-
-Planned for later chapters: Redis, SignalR, k6, OpenTelemetry, .NET Aspire.
+- k6 (run from Docker) for load tests
 
 ## Architecture
 
@@ -55,7 +72,10 @@ TicketBooking.Application     Services (business rules), DTOs, exceptions,
 TicketBooking.Domain          Entities (Event, Seat, Reservation) and enums
 
 TicketBooking.Infrastructure  EF Core DbContext, configurations, migrations,
-                              repository implementations (references Application and Domain)
+                              repository implementations, payment gateway client
+                              (references Application and Domain)
+
+TicketBooking.FakePaymentGateway   Separate service that stands in for a payment provider
 ```
 
 A request flows as **Controller → Service → Repository → DbContext**.
@@ -65,9 +85,12 @@ src/
 ├── TicketBooking.Api/
 ├── TicketBooking.Application/
 ├── TicketBooking.Domain/
+├── TicketBooking.FakePaymentGateway/
 └── TicketBooking.Infrastructure/
 tests/
 └── TicketBooking.IntegrationTests/
+load-tests/
+└── payment-load.js
 scripts/
 └── oversell-demo.cs
 docs/
@@ -104,13 +127,20 @@ dotnet user-secrets set "ConnectionStrings:Database" "Host=localhost;Port=5432;D
 dotnet run --project src/TicketBooking.Api
 ```
 
-In the Development environment the API applies migrations and creates a demo event with 100 seats on startup. It listens on `http://localhost:5287`.
+In the Development environment the API applies migrations on startup and creates a demo event with 100 seats and a load test event with 10,000 seats. It listens on `http://localhost:5287`.
+
+Paying for a reservation also needs the fake payment gateway, in a second terminal (listens on `http://localhost:5288`):
+
+```bash
+dotnet run --project src/TicketBooking.FakePaymentGateway
+```
 
 | Endpoint | Description |
 |---|---|
 | `GET /api/events` | List events |
 | `GET /api/events/{eventId}/seats` | List the seats of an event and their status |
 | `POST /api/reservations` | Reserve a seat. Body: `{ "seatId": "...", "userId": "..." }` |
+| `POST /api/reservations/{reservationId}/confirm` | Pay for a reservation |
 
 ### 4. Run the tests
 
@@ -129,6 +159,16 @@ dotnet run scripts/oversell-demo.cs
 ```
 
 It sends 50 reservation requests for the same seat at the same time and reports how many succeeded.
+
+### 6. Run the load test
+
+With the API and the fake payment gateway running:
+
+```bash
+docker compose run --rm k6 run /scripts/payment-load.js
+```
+
+See [Chapter 2](docs/chapters/02-payment-inside-transaction.md) for what it measures and how to reset the data.
 
 ## Conventions
 
