@@ -2,6 +2,7 @@ using TicketBooking.Application.DTOs.EventDTOs;
 using TicketBooking.Application.Exceptions;
 using TicketBooking.Application.Interfaces.Repositories;
 using TicketBooking.Application.Interfaces.Services;
+using TicketBooking.Domain.Enums;
 
 namespace TicketBooking.Application.Services;
 
@@ -38,6 +39,8 @@ public class EventService : IEventService
 
         var seats = await _seatRepository.GetByEventIdAsync(eventId);
 
+        var now = DateTime.UtcNow;
+
         return seats.Select(s => new SeatDto
         {
             Id = s.Id,
@@ -45,7 +48,11 @@ public class EventService : IEventService
             Row = s.Row,
             Number = s.Number,
             PriceInKurus = s.PriceInKurus,
-            Status = s.Status.ToString(),
+            // Expired holds are not cleaned up in the database; they count as free,
+            // the same rule ReservationService applies when reserving.
+            Status = s.Status == SeatStatus.Held && s.HoldExpiresAtUtc <= now
+                ? SeatStatus.Available.ToString()
+                : s.Status.ToString(),
         }).ToList();
     }
 }
