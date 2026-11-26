@@ -1,3 +1,4 @@
+using TicketBooking.Application.DTOs.PaymentDTOs;
 using TicketBooking.Application.DTOs.ReservationDTOs;
 using TicketBooking.Application.Exceptions;
 using TicketBooking.Application.Interfaces.ExternalServices;
@@ -12,15 +13,18 @@ public class ReservationService : IReservationService
 {
     private readonly ISeatRepository _seatRepository;
     private readonly IReservationRepository _reservationRepository;
+    private readonly IPaymentRepository _paymentRepository;
     private readonly IPaymentGateway _paymentGateway;
 
     public ReservationService(
         ISeatRepository seatRepository,
         IReservationRepository reservationRepository,
+        IPaymentRepository paymentRepository,
         IPaymentGateway paymentGateway)
     {
         _seatRepository = seatRepository;
         _reservationRepository = reservationRepository;
+        _paymentRepository = paymentRepository;
         _paymentGateway = paymentGateway;
     }
 
@@ -92,19 +96,26 @@ public class ReservationService : IReservationService
     //
     // FIXED (tag ch2-fixed): no transaction around the payment call.
     //
-    // STILL OPEN (Chapter 3):
-    // - Two parallel confirms of the same reservation can both charge the customer.
-    //   xmin rejects the second save, but the money has already been taken.
+    // Full write-up: docs/chapters/02-payment-inside-transaction.md
+    //
+    // Chapter 3: Duplicate payment
+    //
+    // WAS INTENTIONALLY BROKEN (tag ch3-broken):
+    // Check-then-act again, but this time the "act" cannot be undone. A double click or
+    // a client retry sent a second confirm while the first was still waiting for the
+    // provider. Both saw "Pending" and both charged. Only one save succeeded, so the
+    // customer paid several times and was told that the other attempts failed.
+    //
+    // FIXED (tag ch3-fixed): a payment row with a unique ReservationId is saved before
+    // the charge, and a confirm of an already paid reservation returns the same result.
+    //
+    // STILL OPEN (outside the scope of this project, needs reconciliation):
+    // - If the outcome of a charge is unknown (timeout, crash), the claim stays and the
+    //   reservation cannot be paid again.
     // - If the save fails after a successful charge (for example the hold expired and
     //   someone else took the seat), the customer is charged without getting the seat.
     //
-    // Full write-up: docs/chapters/02-payment-inside-transaction.md
-    //
-    // INTENTIONALLY BROKEN — Chapter 3: Duplicate payment
-    // Check-then-act again, but this time the "act" cannot be undone. A double click or
-    // a client retry sends a second confirm while the first is still waiting for the
-    // provider. Both see "Pending" and both charge. Only one save succeeds, so the
-    // customer pays several times and is told that the other attempts failed.
+    // Full write-up: docs/chapters/03-duplicate-payment.md
     public async Task<ReservationDto> ConfirmAsync(Guid reservationId)
     {
         var now = DateTime.UtcNow;
@@ -116,6 +127,12 @@ public class ReservationService : IReservationService
         if (reservation == null)
         {
             throw new NotFoundException("Reservation not found.");
+        }
+
+        // Already paid: return the same result again without charging (a safe retry).
+        if (reservation.Status == ReservationStatus.Confirmed)
+        {
+            return ToDto(reservation);
         }
 
         if (reservation.Status != ReservationStatus.Pending)
@@ -134,8 +151,28 @@ public class ReservationService : IReservationService
             throw new ConflictException("Seat is no longer held by this reservation.");
         }
 
-        // 2) Take the money. No database connection is held while we wait.
-        var payment = await _paymentGateway.ChargeAsync(reservation.Id, reservation.TotalInKurus);
+        // 2) Claim the payment BEFORE taking money. The database accepts only one
+        // payment row per reservation, so only one request gets past this point.
+        var claim = new Payment { ReservationId = reservation.Id, CreatedAtUtc = now };
+        if (!await _paymentRepository.TryAddAsync(claim))
+        {
+            throw new ConflictException("A payment for this reservation already exists or is in progress.");
+        }
+
+        // Take the money. No database connection is held while we wait.
+        PaymentResultDto payment;
+        try
+        {
+            payment = await _paymentGateway.ChargeAsync(reservation.Id, reservation.TotalInKurus);
+        }
+        catch (PaymentFailedException)
+        {
+            // The provider said no, so the user may try again.
+            // Any other error (timeout, lost connection) keeps the claim: we do not know
+            // whether the money was taken, and charging again would be worse.
+            await _paymentRepository.RemoveAsync(claim);
+            throw;
+        }
 
         // 3) Mark the reservation confirmed and the seat sold.
         // One SaveChanges is atomic by itself, so both rows change together or not at all.

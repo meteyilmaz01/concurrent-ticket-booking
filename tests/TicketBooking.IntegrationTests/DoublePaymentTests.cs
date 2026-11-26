@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TicketBooking.Application.DTOs.EventDTOs;
 using TicketBooking.Application.DTOs.PaymentDTOs;
 using TicketBooking.Application.DTOs.ReservationDTOs;
+using TicketBooking.Application.Exceptions;
 using TicketBooking.Application.Interfaces.ExternalServices;
 
 namespace TicketBooking.IntegrationTests;
@@ -52,6 +53,39 @@ public class DoublePaymentTests : IClassFixture<TicketBookingApiFactory>
             $"{ParallelConfirms} confirm requests: {_gateway.ChargeCount} charges, {successful} successful responses.");
     }
 
+    [Fact]
+    public async Task Confirming_a_paid_reservation_again_returns_the_same_payment_without_charging()
+    {
+        var reservation = await ReserveSeatAsync();
+
+        var first = await ConfirmAsync(reservation.Id);
+        var second = await ConfirmAsync(reservation.Id);
+
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(
+            (await first.Content.ReadFromJsonAsync<ReservationDto>())!.PaymentId,
+            (await second.Content.ReadFromJsonAsync<ReservationDto>())!.PaymentId);
+        Assert.Equal(1, _gateway.ChargeCount);
+    }
+
+    [Fact]
+    public async Task A_declined_payment_can_be_tried_again()
+    {
+        var reservation = await ReserveSeatAsync();
+        _gateway.DeclineNext = true;
+
+        var declined = await ConfirmAsync(reservation.Id);
+        var retry = await ConfirmAsync(reservation.Id);
+
+        Assert.Equal(HttpStatusCode.BadGateway, declined.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+    }
+
+    private Task<HttpResponseMessage> ConfirmAsync(Guid reservationId)
+    {
+        return _client.PostAsync($"/api/reservations/{reservationId}/confirm", null);
+    }
+
     private async Task<ReservationDto> ReserveSeatAsync()
     {
         var events = await _client.GetFromJsonAsync<List<EventDto>>("/api/events");
@@ -64,17 +98,25 @@ public class DoublePaymentTests : IClassFixture<TicketBookingApiFactory>
         return (await response.Content.ReadFromJsonAsync<ReservationDto>())!;
     }
 
-    // Stands in for the payment provider: takes a moment, always succeeds, counts the calls.
+    // Stands in for the payment provider: takes a moment, counts the calls, can decline once.
     private class CountingPaymentGateway : IPaymentGateway
     {
         private int _chargeCount;
 
         public int ChargeCount => _chargeCount;
 
+        public bool DeclineNext { get; set; }
+
         public async Task<PaymentResultDto> ChargeAsync(Guid reservationId, long amountInKurus)
         {
             Interlocked.Increment(ref _chargeCount);
             await Task.Delay(500);
+
+            if (DeclineNext)
+            {
+                DeclineNext = false;
+                throw new PaymentFailedException("Declined.");
+            }
 
             return new PaymentResultDto { PaymentId = Guid.CreateVersion7() };
         }

@@ -49,6 +49,31 @@ namespace TicketBooking.Infrastructure.Persistence.Migrations
                     b.ToTable("events", (string)null);
                 });
 
+            modelBuilder.Entity("TicketBooking.Domain.Entities.Payment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("ReservationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reservation_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_payments");
+
+                    b.HasIndex("ReservationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payments_reservation_id");
+
+                    b.ToTable("payments", (string)null);
+                });
+
             modelBuilder.Entity("TicketBooking.Domain.Entities.Reservation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -172,6 +197,18 @@ namespace TicketBooking.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_seats_event_id_section_row_number");
 
                     b.ToTable("seats", (string)null);
+                });
+
+            modelBuilder.Entity("TicketBooking.Domain.Entities.Payment", b =>
+                {
+                    b.HasOne("TicketBooking.Domain.Entities.Reservation", "Reservation")
+                        .WithMany()
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_payments_reservations_reservation_id");
+
+                    b.Navigation("Reservation");
                 });
 
             modelBuilder.Entity("TicketBooking.Domain.Entities.Reservation", b =>
