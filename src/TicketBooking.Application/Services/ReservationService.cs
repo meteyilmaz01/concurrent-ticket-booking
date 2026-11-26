@@ -81,68 +81,68 @@ public class ReservationService : IReservationService
         return ToDto(reservation);
     }
 
-    // INTENTIONALLY BROKEN — Chapter 2: Payment inside a database transaction
-    // The whole confirmation runs in one transaction so that "if the payment fails,
+    // Chapter 2: Payment inside a database transaction
+    //
+    // WAS INTENTIONALLY BROKEN (tag ch2-broken):
+    // The whole confirmation ran in one transaction so that "if the payment fails,
     // nothing is saved". But a transaction holds a database connection from Begin
-    // until Commit, and the payment provider takes ~2 seconds to answer. During that
-    // time the connection does nothing but wait. Under load the connection pool runs
-    // out, and every other request - even ones unrelated to payments, like listing
-    // events - has to wait for a free connection or fails.
+    // until Commit, and the payment provider takes ~2 seconds to answer. Under load
+    // the connection pool ran out, and unrelated requests (listing events) had to
+    // wait for a free connection.
+    //
+    // FIXED (tag ch2-fixed): no transaction around the payment call.
+    //
+    // STILL OPEN (Chapter 3):
+    // - Two parallel confirms of the same reservation can both charge the customer.
+    //   xmin rejects the second save, but the money has already been taken.
+    // - If the save fails after a successful charge (for example the hold expired and
+    //   someone else took the seat), the customer is charged without getting the seat.
+    //
+    // Full write-up: docs/chapters/02-payment-inside-transaction.md
     public async Task<ReservationDto> ConfirmAsync(Guid reservationId)
     {
         var now = DateTime.UtcNow;
 
-        // The connection is taken here...
-        await _reservationRepository.BeginTransactionAsync();
-
-        try
+        // 1) Read the reservation and its seat.
+        // Without an explicit transaction, EF Core returns the connection to the pool
+        // after each query.
+        var reservation = await _reservationRepository.GetByIdAsync(reservationId);
+        if (reservation == null)
         {
-            // 1) Read the reservation and its seat
-            var reservation = await _reservationRepository.GetByIdAsync(reservationId);
-            if (reservation == null)
-            {
-                throw new NotFoundException("Reservation not found.");
-            }
-
-            if (reservation.Status != ReservationStatus.Pending)
-            {
-                throw new ConflictException("Reservation is not pending.");
-            }
-
-            if (reservation.ExpiresAtUtc <= now)
-            {
-                throw new ConflictException("Reservation has expired.");
-            }
-
-            var seat = await _seatRepository.GetByIdAsync(reservation.SeatId);
-            if (seat == null || seat.ReservationId != reservation.Id)
-            {
-                throw new ConflictException("Seat is no longer held by this reservation.");
-            }
-
-            // 2) Take the money (~2 seconds, while the connection sits idle)
-            var payment = await _paymentGateway.ChargeAsync(reservation.Id, reservation.TotalInKurus);
-
-            // 3) Mark the reservation confirmed and the seat sold
-            reservation.Status = ReservationStatus.Confirmed;
-            reservation.ConfirmedAtUtc = now;
-            reservation.PaymentId = payment.PaymentId;
-
-            seat.Status = SeatStatus.Sold;
-            seat.HoldExpiresAtUtc = null;
-
-            await _reservationRepository.SaveChangesAsync();
-
-            // ...and only given back here.
-            await _reservationRepository.CommitAsync();
-
-            return ToDto(reservation);
+            throw new NotFoundException("Reservation not found.");
         }
-        catch
+
+        if (reservation.Status != ReservationStatus.Pending)
         {
-            await _reservationRepository.RollbackAsync();
-            throw;
+            throw new ConflictException("Reservation is not pending.");
         }
+
+        if (reservation.ExpiresAtUtc <= now)
+        {
+            throw new ConflictException("Reservation has expired.");
+        }
+
+        var seat = await _seatRepository.GetByIdAsync(reservation.SeatId);
+        if (seat == null || seat.ReservationId != reservation.Id)
+        {
+            throw new ConflictException("Seat is no longer held by this reservation.");
+        }
+
+        // 2) Take the money. No database connection is held while we wait.
+        var payment = await _paymentGateway.ChargeAsync(reservation.Id, reservation.TotalInKurus);
+
+        // 3) Mark the reservation confirmed and the seat sold.
+        // One SaveChanges is atomic by itself, so both rows change together or not at all.
+        reservation.Status = ReservationStatus.Confirmed;
+        reservation.ConfirmedAtUtc = now;
+        reservation.PaymentId = payment.PaymentId;
+
+        seat.Status = SeatStatus.Sold;
+        seat.HoldExpiresAtUtc = null;
+
+        await _reservationRepository.SaveChangesAsync();
+
+        return ToDto(reservation);
     }
 
     private static ReservationDto ToDto(Reservation reservation)
